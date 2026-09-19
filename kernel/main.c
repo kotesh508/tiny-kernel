@@ -19,8 +19,11 @@ static void uart_puthex(uintptr_t value)
         uart_putc(hex[(value >> shift) & 0xF]);
 }
 
+static volatile uint32_t demo_task_runs = 0;
+
 static void demo_task(void)
 {
+    demo_task_runs++;
     volatile uint64_t task_stack_marker = 0x1122334455667788ULL;
 
     uart_puts("TASK START\r\n");
@@ -44,20 +47,104 @@ void kernel_main(void)
     uart_puts("TASK TEST\r\n");
 
     struct task demo_task_control;
+    struct task second_task;
 
-    if (task_create(&demo_task_control, demo_task) != 0) {
+    int create_result;
+    int run_result;
+    int destroy_result;
+    int second_create_result;
+    int second_destroy_result;
+    int invalid_create_result;
+    int invalid_entry_result;
+    int invalid_run_result;
+    int invalid_destroy_result;
+
+    uintptr_t first_stack_top;
+    uintptr_t second_stack_top;
+    void *first_stack_page;
+    void *second_stack_page;
+
+    demo_task_runs = 0;
+
+    invalid_create_result =
+        task_create((struct task *)0, demo_task);
+
+    invalid_entry_result =
+        task_create(&demo_task_control, (task_entry_t)0);
+
+    create_result =
+        task_create(&demo_task_control, demo_task);
+
+    if (invalid_create_result == -1 &&
+        invalid_entry_result == -1 &&
+        create_result == 0)
+        uart_puts("TASK CREATE PASS\r\n");
+    else
         uart_puts("TASK CREATE FAIL\r\n");
-    } else {
-        if (task_run(&demo_task_control) == 0)
-            uart_puts("TASK RUN PASS\r\n");
-        else
-            uart_puts("TASK RUN FAIL\r\n");
 
-        if (task_destroy(&demo_task_control) == 0)
-            uart_puts("TASK DESTROY PASS\r\n");
-        else
-            uart_puts("TASK DESTROY FAIL\r\n");
-    }
+    first_stack_page = demo_task_control.stack_page;
+    first_stack_top = demo_task_control.stack_top;
+
+    if (demo_task_control.state == TASK_READY &&
+        first_stack_page != (void *)0 &&
+        first_stack_top ==
+            ((uintptr_t)first_stack_page + 0x1000UL))
+        uart_puts("TASK READY PASS\r\n");
+    else
+        uart_puts("TASK READY FAIL\r\n");
+
+    run_result = task_run(&demo_task_control);
+
+    if (run_result == 0 &&
+        demo_task_runs == 1 &&
+        demo_task_control.state == TASK_DONE)
+        uart_puts("TASK RUN PASS\r\n");
+    else
+        uart_puts("TASK RUN FAIL\r\n");
+
+    if (destroy_result = task_destroy(&demo_task_control),
+        destroy_result == 0 &&
+        demo_task_control.state == TASK_DEAD &&
+        demo_task_control.stack_page == (void *)0)
+        uart_puts("TASK DESTROY PASS\r\n");
+    else
+        uart_puts("TASK DESTROY FAIL\r\n");
+
+    second_create_result =
+        task_create(&second_task, demo_task);
+
+    second_stack_page = second_task.stack_page;
+    second_stack_top = second_task.stack_top;
+
+    if (second_create_result == 0 &&
+        second_stack_page == first_stack_page &&
+        second_stack_top ==
+            ((uintptr_t)second_stack_page + 0x1000UL))
+        uart_puts("TASK STACK REUSE PASS\r\n");
+    else
+        uart_puts("TASK STACK REUSE FAIL\r\n");
+
+    second_destroy_result =
+        task_destroy(&second_task);
+
+    invalid_run_result =
+        task_run(&demo_task_control);
+
+    invalid_destroy_result =
+        task_destroy(&demo_task_control);
+
+    if (second_destroy_result == 0 &&
+        invalid_run_result == -1 &&
+        invalid_destroy_result == -1)
+        uart_puts("TASK NEGATIVE PASS\r\n");
+    else
+        uart_puts("TASK NEGATIVE FAIL\r\n");
+
+    if (demo_task_runs == 1)
+        uart_puts("TASK BODY PASS\r\n");
+    else
+        uart_puts("TASK BODY FAIL\r\n");
+
     uart_puts("MEMORY TEST\r\n");
 
     uart_puts("PAGE1 = 0x");
