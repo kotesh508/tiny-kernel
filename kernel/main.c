@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include "task.h"
 extern void uart_puts(const char *s);
 extern void uart_putc(char c);
 
@@ -18,6 +19,20 @@ static void uart_puthex(uintptr_t value)
         uart_putc(hex[(value >> shift) & 0xF]);
 }
 
+static void demo_task(void)
+{
+    volatile uint64_t task_stack_marker = 0x1122334455667788ULL;
+
+    uart_puts("TASK START\r\n");
+
+    if (task_stack_marker == 0x1122334455667788ULL)
+        uart_puts("TASK RUNNING\r\n");
+    else
+        uart_puts("TASK STACK FAIL\r\n");
+
+    uart_puts("TASK END\r\n");
+}
+
 void kernel_main(void)
 {
     uart_puts("TIMER TEST\r\n");
@@ -25,6 +40,24 @@ void kernel_main(void)
     gic_init();
     timer_init();
     page_alloc_init();
+
+    uart_puts("TASK TEST\r\n");
+
+    struct task demo_task_control;
+
+    if (task_create(&demo_task_control, demo_task) != 0) {
+        uart_puts("TASK CREATE FAIL\r\n");
+    } else {
+        if (task_run(&demo_task_control) == 0)
+            uart_puts("TASK RUN PASS\r\n");
+        else
+            uart_puts("TASK RUN FAIL\r\n");
+
+        if (task_destroy(&demo_task_control) == 0)
+            uart_puts("TASK DESTROY PASS\r\n");
+        else
+            uart_puts("TASK DESTROY FAIL\r\n");
+    }
     uart_puts("MEMORY TEST\r\n");
 
     uart_puts("PAGE1 = 0x");

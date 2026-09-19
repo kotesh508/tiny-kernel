@@ -5,6 +5,7 @@ LD      = $(CROSS_COMPILE)ld
 OBJCOPY = $(CROSS_COMPILE)objcopy
 
 CFLAGS = -ffreestanding \
+ -Iinclude \
          -fno-stack-protector \
          -fno-pie \
          -fno-builtin \
@@ -27,7 +28,9 @@ OBJS = boot/start.o \
        kernel/exception-vector.o \
        kernel/gic.o \
        kernel/timer.o \
-       kernel/page_alloc.o
+       kernel/page_alloc.o \
+        kernel/task.o \
+        kernel/task_switch.o
 
 all: kernel.elf kernel.bin
 
@@ -65,3 +68,9 @@ clean:
 	rm -f $(OBJS) kernel.elf kernel.bin
 
 .PHONY: all clean
+
+kernel/task.o: kernel/task.c include/task.h
+	$(CC) $(CFLAGS) -c $< -o $@
+
+kernel/task_switch.o: kernel/task_switch.S include/task.h
+	$(CC) $(CFLAGS) $(ASFLAGS) -c $< -o $@
