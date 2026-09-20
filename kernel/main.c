@@ -1,11 +1,17 @@
 #include <stdint.h>
 #include "task.h"
+#include "fdt.h"
+extern void uart_init(uintptr_t base);
 extern void uart_puts(const char *s);
 extern void uart_putc(char c);
 
-extern void gic_init(void);
+extern void gic_init(uintptr_t distributor_base,
+                     uintptr_t cpu_interface_base,
+                     uint32_t timer_irq);
 extern void timer_init(void);
-extern void page_alloc_init(void);
+extern void page_alloc_init(uintptr_t reserved_start,
+                             uintptr_t reserved_size);
+extern volatile uint32_t allocator_reserved_pages;
 extern void *page_alloc(void);
 extern int page_free(void *page);
 extern uint32_t allocator_total_pages;
@@ -36,13 +42,136 @@ static void demo_task(void)
     uart_puts("TASK END\r\n");
 }
 
-void kernel_main(void)
+void kernel_main(uintptr_t dtb)
 {
+    struct fdt_header_info fdt_info;
+    struct fdt_reg uart_reg;
+    struct fdt_reg gic_reg;
+    uint32_t timer_irq;
+    int fdt_result;
+    int uart_result;
+
+    fdt_result = fdt_read_header(dtb, &fdt_info);
+
+    if (fdt_result != 0)
+        while (1)
+            __asm__ volatile ("wfe");
+
+    uart_result =
+        fdt_find_compatible_reg(
+            dtb,
+            &fdt_info,
+            "arm,pl011",
+            &uart_reg);
+
+    if (uart_result != 0 ||
+        uart_reg.base == 0)
+        while (1)
+            __asm__ volatile ("wfe");
+
+    uart_init(uart_reg.base);
+
+    uart_puts("DTB = 0x");
+    uart_puthex(dtb);
+    uart_puts("\r\n");
+
+    uart_puts("UART BASE = 0x");
+    uart_puthex(uart_reg.base);
+    uart_puts("\r\n");
+
+    uart_puts("UART SIZE = 0x");
+    uart_puthex(uart_reg.size);
+    uart_puts("\r\n");
+
+    uart_puts("DTB UART DISCOVERY PASS\r\n");
+
+    if (fdt_result == 0) {
+        uart_puts("FDT MAGIC = 0x");
+        uart_puthex(fdt_info.magic);
+        uart_puts("\r\n");
+
+        uart_puts("FDT SIZE = 0x");
+        uart_puthex(fdt_info.totalsize);
+        uart_puts("\r\n");
+
+        uart_puts("FDT STRUCT = 0x");
+        uart_puthex(fdt_info.off_dt_struct);
+        uart_puts("\r\n");
+
+        uart_puts("FDT STRINGS = 0x");
+        uart_puthex(fdt_info.off_dt_strings);
+        uart_puts("\r\n");
+
+        uart_puts("FDT HEADER PASS\r\n");
+
+        if (fdt_dump_root_properties(dtb, &fdt_info) == 0)
+            uart_puts("FDT ROOT PROPERTY PASS\r\n");
+        else
+            uart_puts("FDT ROOT PROPERTY FAIL\r\n");
+
+        if (fdt_dump_node_names(dtb, &fdt_info) == 0)
+            uart_puts("FDT NODE WALK PASS\r\n");
+        else
+            uart_puts("FDT NODE WALK FAIL\r\n");
+
+        if (fdt_dump_named_node_properties(
+                dtb,
+                &fdt_info,
+                "pl011@9000000") == 0)
+            uart_puts("FDT PL011 NODE PASS\r\n");
+        else
+            uart_puts("FDT PL011 NODE FAIL\r\n");
+
+        if (fdt_dump_named_node_properties(
+                dtb,
+                &fdt_info,
+                "intc@8000000") == 0)
+            uart_puts("FDT GIC NODE PASS\r\n");
+        else
+            uart_puts("FDT GIC NODE FAIL\r\n");
+
+    } else {
+        uart_puts("FDT HEADER FAIL = ");
+        uart_puthex((uintptr_t)fdt_result);
+        uart_puts("\r\n");
+    }
     uart_puts("TIMER TEST\r\n");
 
-    gic_init();
+    if (fdt_find_compatible_reg(
+            dtb,
+            &fdt_info,
+            "arm,cortex-a15-gic",
+            &gic_reg) == 0 &&
+        gic_reg.base != 0 &&
+        gic_reg.base2 != 0) {
+        uart_puts("DTB GIC DISCOVERY PASS\\r\\n");
+    } else {
+        uart_puts("DTB GIC DISCOVERY FAIL\\r\\n");
+        for (;;) asm volatile("wfe");
+    }
+
+    if (fdt_find_timer_virtual_irq(
+            dtb,
+            &fdt_info,
+            &timer_irq) == 0) {
+        uart_puts("DTB TIMER DISCOVERY PASS\\r\\n");
+    } else {
+        uart_puts("DTB TIMER DISCOVERY FAIL\\r\\n");
+        for (;;) asm volatile("wfe");
+    }
+
+    gic_init(gic_reg.base, gic_reg.base2, timer_irq);
     timer_init();
-    page_alloc_init();
+    page_alloc_init(dtb, fdt_info.totalsize);
+
+    uart_puts("FDT RESERVED PAGES = 0x");
+    uart_puthex(allocator_reserved_pages);
+    uart_puts("\r\n");
+
+    if (allocator_reserved_pages != 0)
+        uart_puts("FDT RESERVATION PASS\r\n");
+    else
+        uart_puts("FDT RESERVATION FAIL\r\n");
 
     uart_puts("TASK TEST\r\n");
 
@@ -215,7 +344,10 @@ void kernel_main(void)
     uart_puthex((uintptr_t)page_alloc());
     uart_puts("\r\n");
 
-    if (exhausted_count == (allocator_total_pages - 3U) &&
+    if (exhausted_count ==
+            (allocator_total_pages -
+             allocator_reserved_pages -
+             3U) &&
         page_alloc() == (void *)0)
         uart_puts("EXHAUSTION PASS\r\n");
     else

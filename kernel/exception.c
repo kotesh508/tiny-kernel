@@ -3,6 +3,7 @@
 extern void uart_puts(const char *s);
 extern uint32_t gic_acknowledge(void);
 extern void gic_end_interrupt(uint32_t iar);
+extern uint32_t gic_timer_irq(void);
 extern void timer_reload(void);
 
 volatile uint64_t captured_elr;
@@ -32,7 +33,7 @@ void irq_handler(void)
     iar = gic_acknowledge();
     intid = iar & 0x3FF;
 
-    if (intid == 27) {
+    if (intid == gic_timer_irq()) {
         timer_ticks++;
         timer_reload();
         uart_puts("TICK\r\n");

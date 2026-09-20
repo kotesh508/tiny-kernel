@@ -1,20 +1,17 @@
 #include <stdint.h>
 
-#define GICD_BASE          0x08000000UL
-#define GICC_BASE          0x08010000UL
+#define GICD_CTLR       0x000
+#define GICD_IGROUPR0   0x080
+#define GICD_ISENABLER0 0x100
 
-#define GICD_CTLR          0x000
-#define GICD_IGROUPR0      0x080
-#define GICD_ISENABLER0    0x100
+#define GICC_CTLR       0x000
+#define GICC_PMR        0x004
+#define GICC_IAR        0x00C
+#define GICC_EOIR       0x010
 
-#define GICC_CTLR          0x000
-#define GICC_PMR           0x004
-#define GICC_IAR           0x00C
-#define GICC_AIAR         0x020
-#define GICC_EOIR          0x010
-#define GICC_AEOIR        0x024
-
-#define TIMER_INTID        27
+static uintptr_t gicd_base;
+static uintptr_t gicc_base;
+static uint32_t timer_intid;
 
 static inline void mmio_write32(uintptr_t addr, uint32_t value)
 {
@@ -26,33 +23,50 @@ static inline uint32_t mmio_read32(uintptr_t addr)
     return *(volatile uint32_t *)addr;
 }
 
-void gic_init(void)
+void gic_init(uintptr_t distributor_base,
+              uintptr_t cpu_interface_base,
+              uint32_t timer_irq)
 {
-    /* Put timer PPI 27 into Group 1. */
-    uint32_t group = mmio_read32(GICD_BASE + GICD_IGROUPR0);
-    group |= (1U << TIMER_INTID);
-    mmio_write32(GICD_BASE + GICD_IGROUPR0, group);
+    uint32_t group;
 
-    /* Enable timer PPI 27. */
-    mmio_write32(GICD_BASE + GICD_ISENABLER0,
-                 (1U << TIMER_INTID));
+    if (distributor_base == 0 ||
+        cpu_interface_base == 0 ||
+        timer_irq >= 32)
+        return;
 
-    /* Allow all priorities. */
-    mmio_write32(GICC_BASE + GICC_PMR, 0xFF);
+    gicd_base = distributor_base;
+    gicc_base = cpu_interface_base;
+    timer_intid = timer_irq;
 
-    /* Enable Group 1 interrupts. */
-    mmio_write32(GICC_BASE + GICC_CTLR, 0x6);
+    group = mmio_read32(gicd_base + GICD_IGROUPR0);
+    group |= (1U << timer_intid);
+    mmio_write32(gicd_base + GICD_IGROUPR0, group);
 
-    /* Enable Group 1 at distributor. */
-    mmio_write32(GICD_BASE + GICD_CTLR, 0x2);
+    mmio_write32(gicd_base + GICD_ISENABLER0,
+                 (1U << timer_intid));
+
+    mmio_write32(gicc_base + GICC_PMR, 0xFF);
+    mmio_write32(gicc_base + GICC_CTLR, 0x6);
+    mmio_write32(gicd_base + GICD_CTLR, 0x2);
 }
 
 uint32_t gic_acknowledge(void)
 {
-    return mmio_read32(GICC_BASE + GICC_IAR);
+    if (gicc_base == 0)
+        return 0;
+
+    return mmio_read32(gicc_base + GICC_IAR);
 }
 
 void gic_end_interrupt(uint32_t iar)
 {
-    mmio_write32(GICC_BASE + GICC_EOIR, iar);
+    if (gicc_base == 0)
+        return;
+
+    mmio_write32(gicc_base + GICC_EOIR, iar);
+}
+
+uint32_t gic_timer_irq(void)
+{
+    return timer_intid;
 }

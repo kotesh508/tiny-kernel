@@ -2,6 +2,8 @@
 .global _start
 
 _start:
+    mov x19, x0
+
     ldr x0, =stack_top
     mov sp, x0
 
@@ -9,6 +11,7 @@ _start:
     msr vbar_el1, x0
     isb
 
+    mov x0, x19
     bl kernel_main
 
 1:

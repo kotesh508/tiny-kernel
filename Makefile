@@ -28,7 +28,7 @@ OBJS = boot/start.o \
        kernel/exception-vector.o \
        kernel/gic.o \
        kernel/timer.o \
-       kernel/page_alloc.o \
+       kernel/page_alloc.o kernel/fdt.o \
         kernel/task.o \
         kernel/task_switch.o
 
