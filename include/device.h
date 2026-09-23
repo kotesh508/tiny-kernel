@@ -2,19 +2,13 @@
 #define DEVICE_H
 
 #include <stdint.h>
+#include "resource.h"
 
 #define DEVICE_NAME_MAX   32
 #define DEVICE_COMPAT_MAX 64
 
 #define DEVICE_MAX        16
 #define DRIVER_MAX        16
-
-enum device_state {
-    DEVICE_UNREGISTERED = 0,
-    DEVICE_REGISTERED,
-    DEVICE_BOUND,
-    DEVICE_UNBOUND
-};
 
 struct fdt_header_info;
 
@@ -28,14 +22,18 @@ struct device {
     const char *name;
     const char *compatible;
 
-    uintptr_t base;
-    uintptr_t size;
-    uint32_t irq;
+    struct resource resources[RESOURCE_MAX_PER_DEVICE];
+    uint32_t resource_count;
 
     void *driver_data;
     struct driver *driver;
 
-    enum device_state state;
+    enum device_state {
+        DEVICE_UNREGISTERED = 0,
+        DEVICE_REGISTERED,
+        DEVICE_BOUND,
+        DEVICE_UNBOUND
+    } state;
 };
 
 struct driver {
@@ -59,7 +57,19 @@ int device_unbind(struct device *dev);
 
 int device_bind_all(void);
 
-/* DTB → device creation */
+int device_add_resource(
+    struct device *dev,
+    enum resource_type type,
+    uintptr_t start,
+    uintptr_t end,
+    uint32_t flags);
+
+struct resource *device_get_resource(
+    struct device *dev,
+    enum resource_type type,
+    uint32_t index);
+
+/* DTB -> device creation */
 int device_discover_from_fdt_reg(
     uintptr_t dtb,
     const struct fdt_header_info *info,
