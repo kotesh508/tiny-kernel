@@ -144,9 +144,9 @@ void kernel_main(uintptr_t dtb)
             &gic_reg) == 0 &&
         gic_reg.base != 0 &&
         gic_reg.base2 != 0) {
-        uart_puts("DTB GIC DISCOVERY PASS\\r\\n");
+        uart_puts("DTB GIC DISCOVERY PASS\r\n");
     } else {
-        uart_puts("DTB GIC DISCOVERY FAIL\\r\\n");
+        uart_puts("DTB GIC DISCOVERY FAIL\r\n");
         for (;;) asm volatile("wfe");
     }
 
@@ -154,9 +154,9 @@ void kernel_main(uintptr_t dtb)
             dtb,
             &fdt_info,
             &timer_irq) == 0) {
-        uart_puts("DTB TIMER DISCOVERY PASS\\r\\n");
+        uart_puts("DTB TIMER DISCOVERY PASS\r\n");
     } else {
-        uart_puts("DTB TIMER DISCOVERY FAIL\\r\\n");
+        uart_puts("DTB TIMER DISCOVERY FAIL\r\n");
         for (;;) asm volatile("wfe");
     }
 

@@ -572,7 +572,10 @@ int fdt_find_compatible_reg(
 
             if (compat_found[depth] &&
                 reg_found[depth]) {
-                *reg = reg_values[depth];
+                reg->base  = reg_values[depth].base;
+                reg->size  = reg_values[depth].size;
+                reg->base2 = reg_values[depth].base2;
+                reg->size2 = reg_values[depth].size2;
                 return 0;
             }
 
