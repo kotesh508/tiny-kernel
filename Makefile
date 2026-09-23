@@ -30,6 +30,7 @@ OBJS = boot/start.o \
        kernel/timer.o \
        kernel/page_alloc.o kernel/fdt.o \
         kernel/task.o \
+       kernel/device.o \
         kernel/task_switch.o
 
 all: kernel.elf kernel.bin
@@ -70,6 +71,9 @@ clean:
 .PHONY: all clean
 
 kernel/task.o: kernel/task.c include/task.h
+	$(CC) $(CFLAGS) -c $< -o $@
+
+kernel/device.o: kernel/device.c include/device.h
 	$(CC) $(CFLAGS) -c $< -o $@
 
 kernel/task_switch.o: kernel/task_switch.S include/task.h

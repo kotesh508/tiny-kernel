@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include "device.h"
 #include "task.h"
 #include "fdt.h"
 extern void uart_init(uintptr_t base);
@@ -135,6 +136,23 @@ void kernel_main(uintptr_t dtb)
         uart_puthex((uintptr_t)fdt_result);
         uart_puts("\r\n");
     }
+    uart_puts("DEVICE MODEL TEST\r\n");
+
+    {
+        int device_model_result = device_model_test();
+
+        if (device_model_result == 0)
+            uart_puts("DEVICE MODEL PASS\r\n");
+        else {
+            uart_puts("DEVICE MODEL FAIL\r\n");
+            uart_puthex((uintptr_t)(-device_model_result));
+            uart_puts("\\r\\n");
+
+            for (;;)
+                asm volatile("wfe");
+        }
+    }
+
     uart_puts("TIMER TEST\r\n");
 
     if (fdt_find_compatible_reg(
