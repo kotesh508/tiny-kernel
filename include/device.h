@@ -16,6 +16,8 @@ enum device_state {
     DEVICE_UNBOUND
 };
 
+struct fdt_header_info;
+
 struct device;
 struct driver;
 
@@ -56,6 +58,16 @@ int device_bind(struct device *dev, struct driver *drv);
 int device_unbind(struct device *dev);
 
 int device_bind_all(void);
+
+/* DTB → device creation */
+int device_discover_from_fdt_reg(
+    uintptr_t dtb,
+    const struct fdt_header_info *info,
+    const char *name,
+    const char *compatible);
+
+struct device *device_find_compatible(const char *compatible);
+
 int device_model_test(void);
 
 #endif

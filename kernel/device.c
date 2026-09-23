@@ -1,4 +1,5 @@
 #include "device.h"
+#include "fdt.h"
 
 static struct device *device_table[DEVICE_MAX];
 static struct driver *driver_table[DRIVER_MAX];
@@ -100,7 +101,7 @@ int device_unregister(struct device *dev)
     device_table[device_count - 1] = (void *)0;
     device_count--;
 
-    dev->state = DEVICE_UNBOUND;
+    dev->state = DEVICE_UNREGISTERED;
 
     return 0;
 }
@@ -237,6 +238,65 @@ int device_bind_all(void)
     }
 
     return (int)bound;
+}
+
+
+static struct device dtb_pl011_device;
+
+struct device *device_find_compatible(const char *compatible)
+{
+    uint32_t i;
+
+    if (compatible == (void *)0)
+        return (void *)0;
+
+    for (i = 0; i < device_count; i++) {
+        struct device *dev = device_table[i];
+
+        if (dev == (void *)0)
+            continue;
+
+        if (string_equal(dev->compatible, compatible))
+            return dev;
+    }
+
+    return (void *)0;
+}
+
+int device_discover_from_fdt_reg(
+    uintptr_t dtb,
+    const struct fdt_header_info *info,
+    const char *name,
+    const char *compatible)
+{
+    struct fdt_reg reg;
+    int result;
+
+    if (dtb == 0 ||
+        info == (void *)0 ||
+        name == (void *)0 ||
+        compatible == (void *)0)
+        return -1;
+
+    result = fdt_find_compatible_reg(
+        dtb,
+        info,
+        compatible,
+        &reg);
+
+    if (result != 0)
+        return -2;
+
+    dtb_pl011_device.name = name;
+    dtb_pl011_device.compatible = compatible;
+    dtb_pl011_device.base = reg.base;
+    dtb_pl011_device.size = reg.size;
+    dtb_pl011_device.irq = 0;
+    dtb_pl011_device.driver_data = (void *)0;
+    dtb_pl011_device.driver = (void *)0;
+    dtb_pl011_device.state = DEVICE_UNREGISTERED;
+
+    return device_register(&dtb_pl011_device);
 }
 
 /*

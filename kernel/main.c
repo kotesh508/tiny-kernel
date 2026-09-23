@@ -153,6 +153,53 @@ void kernel_main(uintptr_t dtb)
         }
     }
 
+    uart_puts("DTB DEVICE TEST\r\n");
+
+    {
+        struct device *pl011_dev;
+        int device_result;
+
+        device_result = device_discover_from_fdt_reg(
+            dtb,
+            &fdt_info,
+            "pl011",
+            "arm,pl011");
+
+        if (device_result != 0) {
+            uart_puts("DTB DEVICE REGISTER FAIL\r\n");
+            uart_puthex((uintptr_t)(-device_result));
+            uart_puts("\r\n");
+
+            for (;;)
+                asm volatile("wfe");
+        }
+
+        pl011_dev = device_find_compatible("arm,pl011");
+
+        if (pl011_dev == (void *)0 ||
+            pl011_dev->state != DEVICE_REGISTERED ||
+            pl011_dev->base != uart_reg.base ||
+            pl011_dev->size != uart_reg.size) {
+
+            uart_puts("DTB DEVICE VERIFY FAIL\r\n");
+
+            for (;;)
+                asm volatile("wfe");
+        }
+
+        uart_puts("DTB DEVICE REGISTER PASS\r\n");
+
+        uart_puts("DEVICE BASE = 0x");
+        uart_puthex(pl011_dev->base);
+        uart_puts("\r\n");
+
+        uart_puts("DEVICE SIZE = 0x");
+        uart_puthex(pl011_dev->size);
+        uart_puts("\r\n");
+
+        uart_puts("DTB DEVICE TEST PASS\r\n");
+    }
+
     uart_puts("TIMER TEST\r\n");
 
     if (fdt_find_compatible_reg(
