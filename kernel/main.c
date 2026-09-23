@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include "device.h"
+#include "pl011.h"
 #include "task.h"
 #include "fdt.h"
 extern void uart_init(uintptr_t base);
@@ -268,6 +269,82 @@ void kernel_main(uintptr_t dtb)
         uart_puts("MEM RESOURCE PASS\r\n");
         uart_puts("IRQ RESOURCE PASS\r\n");
         uart_puts("RESOURCE MODEL PASS\r\n");
+    }
+
+    uart_puts("PL011 DRIVER TEST\r\n");
+
+    {
+        struct device *pl011_dev;
+        struct resource *mem;
+        int result;
+        int bound;
+
+        pl011_dev = device_find_compatible("arm,pl011");
+
+        if (pl011_dev == (void *)0) {
+            uart_puts("PL011 DEVICE LOOKUP FAIL\r\n");
+
+            for (;;)
+                asm volatile("wfe");
+        }
+
+        mem = device_get_resource(
+            pl011_dev,
+            RESOURCE_MEM,
+            0);
+
+        if (mem == (void *)0) {
+            uart_puts("PL011 RESOURCE LOOKUP FAIL\r\n");
+
+            for (;;)
+                asm volatile("wfe");
+        }
+
+        if (mem->start != uart_reg.base ||
+            mem->end !=
+                uart_reg.base + uart_reg.size - 1) {
+
+            uart_puts("PL011 RESOURCE VERIFY FAIL\r\n");
+
+            for (;;)
+                asm volatile("wfe");
+        }
+
+        result = pl011_driver_register();
+
+        if (result != 0) {
+            uart_puts("PL011 DRIVER REGISTER FAIL\r\n");
+            uart_puthex((uintptr_t)(-result));
+            uart_puts("\r\n");
+
+            for (;;)
+                asm volatile("wfe");
+        }
+
+        uart_puts("PL011 DRIVER REGISTER PASS\r\n");
+
+        bound = device_bind_all();
+
+        if (bound != 1 ||
+            pl011_dev->driver == (void *)0 ||
+            pl011_dev->state != DEVICE_BOUND) {
+
+            uart_puts("PL011 DEVICE BIND FAIL\r\n");
+
+            for (;;)
+                asm volatile("wfe");
+        }
+
+        uart_puts("PL011 DEVICE BIND PASS\r\n");
+
+        if (pl011_dev->driver_data == (void *)0) {
+            uart_puts("PL011 DRIVER DATA FAIL\r\n");
+
+            for (;;)
+                asm volatile("wfe");
+        }
+
+        uart_puts("PL011 DRIVER TEST PASS\r\n");
     }
 
     uart_puts("TIMER TEST\r\n");

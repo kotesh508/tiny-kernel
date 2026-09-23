@@ -31,6 +31,7 @@ OBJS = boot/start.o \
        kernel/page_alloc.o kernel/fdt.o \
         kernel/task.o \
        kernel/device.o \
+       kernel/pl011.o \
         kernel/task_switch.o
 
 all: kernel.elf kernel.bin
@@ -74,6 +75,9 @@ kernel/task.o: kernel/task.c include/task.h
 	$(CC) $(CFLAGS) -c $< -o $@
 
 kernel/device.o: kernel/device.c include/device.h
+	$(CC) $(CFLAGS) -c $< -o $@
+
+kernel/pl011.o: kernel/pl011.c include/pl011.h include/device.h include/resource.h
 	$(CC) $(CFLAGS) -c $< -o $@
 
 kernel/task_switch.o: kernel/task_switch.S include/task.h
