@@ -97,6 +97,8 @@ int device_discover_from_fdt_list(
 
 int device_model_test(void);
 int device_lifecycle_test(void);
+int device_hardening_test(void);
+
 int device_multi_test(
     uintptr_t dtb,
     const struct fdt_header_info *info);

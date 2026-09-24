@@ -1143,3 +1143,383 @@ int device_multi_test(uintptr_t dtb,
 
     return 0;
 }
+
+static int hardening_probe(struct device *dev)
+{
+    if (dev == (void *)0)
+        return -1;
+
+    return 0;
+}
+
+static int hardening_remove(struct device *dev)
+{
+    if (dev == (void *)0)
+        return -1;
+
+    return 0;
+}
+
+static struct device hardening_device = {
+    .name = "hardening-device",
+    .compatible = "test,hardening",
+    .resource_count = 0,
+    .driver_data = (void *)0,
+    .driver = (void *)0,
+    .state = DEVICE_UNREGISTERED
+};
+
+static struct driver hardening_driver = {
+    .name = "hardening-driver",
+    .compatible = "test,hardening",
+    .probe = hardening_probe,
+    .remove = hardening_remove,
+    .registered = 0
+};
+
+static struct device hardening_wrong_device = {
+    .name = "hardening-wrong-device",
+    .compatible = "test,device",
+    .resource_count = 0,
+    .driver_data = (void *)0,
+    .driver = (void *)0,
+    .state = DEVICE_UNREGISTERED
+};
+
+static struct driver hardening_wrong_driver = {
+    .name = "hardening-wrong-driver",
+    .compatible = "test,driver",
+    .probe = hardening_probe,
+    .remove = hardening_remove,
+    .registered = 0
+};
+
+static struct device hardening_fill_devices[DEVICE_MAX];
+static struct device hardening_extra_device;
+
+static struct driver hardening_fill_drivers[DRIVER_MAX];
+static struct driver hardening_extra_driver;
+
+int device_hardening_test(void)
+{
+    struct resource *res;
+    int result;
+    uint32_t i;
+    uint32_t registered_count;
+
+    /*
+     * ------------------------------------------------------------
+     * NULL argument checks
+     * ------------------------------------------------------------
+     */
+
+    if (device_register((void *)0) != -1)
+        return -1;
+
+    if (device_unregister((void *)0) != -1)
+        return -2;
+
+    if (driver_register((void *)0) != -1)
+        return -3;
+
+    if (driver_unregister((void *)0) != -1)
+        return -4;
+
+    /*
+     * ------------------------------------------------------------
+     * Resource validation
+     * ------------------------------------------------------------
+     */
+
+    hardening_device.resource_count = 0;
+    hardening_device.driver_data = (void *)0;
+    hardening_device.driver = (void *)0;
+    hardening_device.state = DEVICE_UNREGISTERED;
+
+    result = device_add_resource(
+        &hardening_device,
+        RESOURCE_MEM,
+        0x2000,
+        0x1fff,
+        0);
+
+    if (result != -3)
+        return -5;
+
+    for (i = 0; i < RESOURCE_MAX_PER_DEVICE; i++) {
+        result = device_add_resource(
+            &hardening_device,
+            RESOURCE_MEM,
+            (uintptr_t)(0x3000 + i * 0x100),
+            (uintptr_t)(0x30ff + i * 0x100),
+            0);
+
+        if (result != 0)
+            return -6;
+    }
+
+    res = device_get_resource(
+        &hardening_device,
+        RESOURCE_MEM,
+        RESOURCE_MAX_PER_DEVICE - 1);
+
+    if (res == (void *)0)
+        return -7;
+
+    result = device_add_resource(
+        &hardening_device,
+        RESOURCE_MEM,
+        0x4000,
+        0x40ff,
+        0);
+
+    if (result != -4)
+        return -8;
+
+    /*
+     * ------------------------------------------------------------
+     * Duplicate device
+     * ------------------------------------------------------------
+     */
+
+    hardening_device.resource_count = 0;
+    hardening_device.driver_data = (void *)0;
+    hardening_device.driver = (void *)0;
+    hardening_device.state = DEVICE_UNREGISTERED;
+
+    result = device_register(&hardening_device);
+
+    if (result != 0)
+        return -9;
+
+    if (device_register(&hardening_device) != -2)
+        return -10;
+
+    /*
+     * ------------------------------------------------------------
+     * Duplicate driver
+     * ------------------------------------------------------------
+     */
+
+    hardening_driver.registered = 0;
+
+    result = driver_register(&hardening_driver);
+
+    if (result != 0)
+        return -11;
+
+    if (driver_register(&hardening_driver) != -2)
+        return -12;
+
+    /*
+     * ------------------------------------------------------------
+     * Wrong compatible
+     * ------------------------------------------------------------
+     */
+
+    hardening_wrong_device.resource_count = 0;
+    hardening_wrong_device.driver_data = (void *)0;
+    hardening_wrong_device.driver = (void *)0;
+    hardening_wrong_device.state = DEVICE_UNREGISTERED;
+
+    hardening_wrong_driver.registered = 0;
+
+    result = device_register(&hardening_wrong_device);
+
+    if (result != 0)
+        return -13;
+
+    result = driver_register(&hardening_wrong_driver);
+
+    if (result != 0)
+        return -14;
+
+    if (device_bind(
+            &hardening_wrong_device,
+            &hardening_wrong_driver) != -5)
+        return -15;
+
+    if (hardening_wrong_device.state != DEVICE_REGISTERED)
+        return -16;
+
+    /*
+     * ------------------------------------------------------------
+     * Double bind / unregister protection / double unbind
+     * ------------------------------------------------------------
+     */
+
+    result = device_bind(
+        &hardening_device,
+        &hardening_driver);
+
+    if (result != 0)
+        return -17;
+
+    if (hardening_device.state != DEVICE_BOUND)
+        return -18;
+
+    if (device_bind(
+            &hardening_device,
+            &hardening_driver) != -4)
+        return -19;
+
+    if (device_unregister(&hardening_device) != -3)
+        return -20;
+
+    if (driver_unregister(&hardening_driver) != -3)
+        return -21;
+
+    if (device_unbind(&hardening_device) != 0)
+        return -22;
+
+    if (hardening_device.state != DEVICE_UNBOUND)
+        return -23;
+
+    if (device_unbind(&hardening_device) != -2)
+        return -24;
+
+    if (hardening_device.driver != (void *)0)
+        return -25;
+
+    if (hardening_device.driver_data != (void *)0)
+        return -26;
+
+    /*
+     * ------------------------------------------------------------
+     * Cleanup wrong-compatible test
+     * ------------------------------------------------------------
+     */
+
+    result = driver_unregister(&hardening_wrong_driver);
+
+    if (result != 0)
+        return -27;
+
+    result = device_unregister(&hardening_wrong_device);
+
+    if (result != 0)
+        return -28;
+
+    /*
+     * ------------------------------------------------------------
+     * Cleanup normal test
+     * ------------------------------------------------------------
+     */
+
+    result = driver_unregister(&hardening_driver);
+
+    if (result != 0)
+        return -29;
+
+    result = device_unregister(&hardening_device);
+
+    if (result != 0)
+        return -30;
+
+    /*
+     * ------------------------------------------------------------
+     * Device table full
+     * ------------------------------------------------------------
+     */
+
+    registered_count = 0;
+
+    for (i = 0; i < DEVICE_MAX; i++) {
+        hardening_fill_devices[i].name = "hardening-fill-device";
+        hardening_fill_devices[i].compatible =
+            "test,hardening-fill";
+        hardening_fill_devices[i].resource_count = 0;
+        hardening_fill_devices[i].driver_data = (void *)0;
+        hardening_fill_devices[i].driver = (void *)0;
+        hardening_fill_devices[i].state =
+            DEVICE_UNREGISTERED;
+
+        result = device_register(
+            &hardening_fill_devices[i]);
+
+        if (result != 0)
+            break;
+
+        registered_count++;
+    }
+
+    if (registered_count == DEVICE_MAX) {
+        hardening_extra_device.name =
+            "hardening-extra-device";
+        hardening_extra_device.compatible =
+            "test,hardening-fill";
+        hardening_extra_device.resource_count = 0;
+        hardening_extra_device.driver_data = (void *)0;
+        hardening_extra_device.driver = (void *)0;
+        hardening_extra_device.state =
+            DEVICE_UNREGISTERED;
+
+        if (device_register(
+                &hardening_extra_device) != -3)
+            return -31;
+    } else {
+        if (result != -3)
+            return -32;
+    }
+
+    for (i = 0; i < registered_count; i++) {
+        if (device_unregister(
+                &hardening_fill_devices[i]) != 0)
+            return -33;
+    }
+
+    /*
+     * ------------------------------------------------------------
+     * Driver table full
+     * ------------------------------------------------------------
+     */
+
+    registered_count = 0;
+
+    for (i = 0; i < DRIVER_MAX; i++) {
+        hardening_fill_drivers[i].name =
+            "hardening-fill-driver";
+        hardening_fill_drivers[i].compatible =
+            "test,hardening-fill-driver";
+        hardening_fill_drivers[i].probe =
+            hardening_probe;
+        hardening_fill_drivers[i].remove =
+            hardening_remove;
+        hardening_fill_drivers[i].registered = 0;
+
+        result = driver_register(
+            &hardening_fill_drivers[i]);
+
+        if (result != 0)
+            break;
+
+        registered_count++;
+    }
+
+    if (registered_count == DRIVER_MAX) {
+        hardening_extra_driver.name =
+            "hardening-extra-driver";
+        hardening_extra_driver.compatible =
+            "test,hardening-fill-driver";
+        hardening_extra_driver.probe =
+            hardening_probe;
+        hardening_extra_driver.remove =
+            hardening_remove;
+        hardening_extra_driver.registered = 0;
+
+        if (driver_register(
+                &hardening_extra_driver) != -3)
+            return -34;
+    } else {
+        if (result != -3)
+            return -35;
+    }
+
+    for (i = 0; i < registered_count; i++) {
+        if (driver_unregister(
+                &hardening_fill_drivers[i]) != 0)
+            return -36;
+    }
+
+    return 0;
+}

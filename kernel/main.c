@@ -413,6 +413,35 @@ void kernel_main(uintptr_t dtb)
         uart_puts("MULTI DEVICE BIND PASS\r\n");
     }
 
+    uart_puts("DEVICE HARDENING TEST\r\n");
+
+    {
+        int result;
+
+        result = device_hardening_test();
+
+        if (result != 0) {
+            uart_puts("DEVICE HARDENING FAIL\r\n");
+            uart_puthex((uintptr_t)(-result));
+            uart_puts("\r\n");
+
+            for (;;)
+                asm volatile("wfe");
+        }
+
+        uart_puts("NULL ARGUMENT PASS\r\n");
+        uart_puts("INVALID RESOURCE PASS\r\n");
+        uart_puts("RESOURCE OVERFLOW PASS\r\n");
+        uart_puts("DUPLICATE DEVICE PASS\r\n");
+        uart_puts("DUPLICATE DRIVER PASS\r\n");
+        uart_puts("WRONG COMPATIBLE PASS\r\n");
+        uart_puts("DOUBLE BIND PASS\r\n");
+        uart_puts("DOUBLE UNBIND PASS\r\n");
+        uart_puts("BOUND UNREGISTER PROTECTION PASS\r\n");
+        uart_puts("TABLE LIMIT PASS\r\n");
+        uart_puts("DEVICE HARDENING PASS\r\n");
+    }
+
     uart_puts("TIMER TEST\r\n");
 
     if (fdt_find_compatible_reg(
