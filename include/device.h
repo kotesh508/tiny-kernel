@@ -85,5 +85,6 @@ int device_discover_from_fdt(
 struct device *device_find_compatible(const char *compatible);
 
 int device_model_test(void);
+int device_lifecycle_test(void);
 
 #endif

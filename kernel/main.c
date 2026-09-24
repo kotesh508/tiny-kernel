@@ -154,6 +154,33 @@ void kernel_main(uintptr_t dtb)
         }
     }
 
+    uart_puts("DEVICE LIFECYCLE TEST\r\n");
+
+    {
+        int result;
+
+        result = device_lifecycle_test();
+
+        if (result != 0) {
+            uart_puts("DEVICE LIFECYCLE FAIL\r\n");
+            uart_puthex((uintptr_t)(-result));
+            uart_puts("\r\n");
+
+            for (;;)
+                asm volatile("wfe");
+        }
+
+        uart_puts("PROBE FAILURE PASS\r\n");
+        uart_puts("FAILED PROBE STATE PASS\r\n");
+        uart_puts("FAILED PROBE CLEANUP PASS\r\n");
+        uart_puts("UNBIND REJECT PASS\r\n");
+        uart_puts("BIND REMOVE PASS\r\n");
+        uart_puts("DRIVER UNREGISTER REJECT PASS\r\n");
+        uart_puts("REBIND PASS\r\n");
+        uart_puts("DRIVER DATA CLEANUP PASS\r\n");
+        uart_puts("DEVICE LIFECYCLE PASS\r\n");
+    }
+
     uart_puts("DTB DEVICE TEST\r\n");
 
     {

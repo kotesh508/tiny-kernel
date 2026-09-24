@@ -605,3 +605,300 @@ int device_model_test(void)
 
     return 0;
 }
+
+static int lifecycle_fail_probe(struct device *dev)
+{
+    if (dev == (void *)0)
+        return -1;
+
+    return -42;
+}
+
+static int lifecycle_remove(struct device *dev)
+{
+    if (dev == (void *)0)
+        return -1;
+
+    return 0;
+}
+
+static struct device lifecycle_fail_device = {
+    .name = "lifecycle-fail-device",
+    .compatible = "test,lifecycle-fail",
+    .resource_count = 0,
+    .driver_data = (void *)0,
+    .driver = (void *)0,
+    .state = DEVICE_UNREGISTERED
+};
+
+static struct driver lifecycle_fail_driver = {
+    .name = "lifecycle-fail-driver",
+    .compatible = "test,lifecycle-fail",
+    .probe = lifecycle_fail_probe,
+    .remove = lifecycle_remove,
+    .registered = 0
+};
+
+static uint32_t lifecycle_success_probe_count;
+static uint32_t lifecycle_success_remove_count;
+static uint32_t lifecycle_success_state;
+
+static int lifecycle_success_probe(struct device *dev)
+{
+    if (dev == (void *)0)
+        return -1;
+
+    lifecycle_success_probe_count++;
+    dev->driver_data = &lifecycle_success_state;
+
+    return 0;
+}
+
+static int lifecycle_success_remove(struct device *dev)
+{
+    if (dev == (void *)0)
+        return -1;
+
+    if (dev->driver_data != &lifecycle_success_state)
+        return -2;
+
+    lifecycle_success_remove_count++;
+
+    /*
+     * Intentionally do not clear driver_data here.
+     *
+     * device_unbind() must clear it after remove() succeeds.
+     */
+    return 0;
+}
+
+static struct device lifecycle_success_device = {
+    .name = "lifecycle-success-device",
+    .compatible = "test,lifecycle-success",
+    .resource_count = 0,
+    .driver_data = (void *)0,
+    .driver = (void *)0,
+    .state = DEVICE_UNREGISTERED
+};
+
+static struct driver lifecycle_success_driver = {
+    .name = "lifecycle-success-driver",
+    .compatible = "test,lifecycle-success",
+    .probe = lifecycle_success_probe,
+    .remove = lifecycle_success_remove,
+    .registered = 0
+};
+
+int device_lifecycle_test(void)
+{
+    int result;
+
+    /*
+     * ------------------------------------------------------------
+     * Phase 1: probe failure
+     * ------------------------------------------------------------
+     */
+
+    lifecycle_fail_device.resource_count = 0;
+    lifecycle_fail_device.driver_data = (void *)0;
+    lifecycle_fail_device.driver = (void *)0;
+    lifecycle_fail_device.state = DEVICE_UNREGISTERED;
+
+    lifecycle_fail_driver.registered = 0;
+
+    result = device_register(&lifecycle_fail_device);
+
+    if (result != 0)
+        return -1;
+
+    if (lifecycle_fail_device.state != DEVICE_REGISTERED)
+        return -2;
+
+    result = driver_register(&lifecycle_fail_driver);
+
+    if (result != 0)
+        return -3;
+
+    result = device_bind(
+        &lifecycle_fail_device,
+        &lifecycle_fail_driver);
+
+    if (result != -42)
+        return -4;
+
+    if (lifecycle_fail_device.state != DEVICE_REGISTERED)
+        return -5;
+
+    if (lifecycle_fail_device.driver != (void *)0)
+        return -6;
+
+    if (lifecycle_fail_device.driver_data != (void *)0)
+        return -7;
+
+    result = device_unbind(&lifecycle_fail_device);
+
+    if (result != -2)
+        return -8;
+
+    result = driver_unregister(&lifecycle_fail_driver);
+
+    if (result != 0)
+        return -9;
+
+    result = device_unregister(&lifecycle_fail_device);
+
+    if (result != 0)
+        return -10;
+
+    if (lifecycle_fail_device.state != DEVICE_UNREGISTERED)
+        return -11;
+
+    /*
+     * ------------------------------------------------------------
+     * Phase 2: successful bind -> remove -> unbind
+     * ------------------------------------------------------------
+     */
+
+    lifecycle_success_probe_count = 0;
+    lifecycle_success_remove_count = 0;
+    lifecycle_success_state = 0x12345678UL;
+
+    lifecycle_success_device.resource_count = 0;
+    lifecycle_success_device.driver_data = (void *)0;
+    lifecycle_success_device.driver = (void *)0;
+    lifecycle_success_device.state = DEVICE_UNREGISTERED;
+
+    lifecycle_success_driver.registered = 0;
+
+    result = device_register(&lifecycle_success_device);
+
+    if (result != 0)
+        return -12;
+
+    result = driver_register(&lifecycle_success_driver);
+
+    if (result != 0)
+        return -13;
+
+    result = device_bind(
+        &lifecycle_success_device,
+        &lifecycle_success_driver);
+
+    if (result != 0)
+        return -14;
+
+    if (lifecycle_success_device.state != DEVICE_BOUND)
+        return -15;
+
+    if (lifecycle_success_device.driver !=
+        &lifecycle_success_driver)
+        return -16;
+
+    if (lifecycle_success_device.driver_data !=
+        &lifecycle_success_state)
+        return -17;
+
+    if (lifecycle_success_probe_count != 1)
+        return -18;
+
+    /*
+     * A bound device must not be unregisterable.
+     */
+    result = device_unregister(&lifecycle_success_device);
+
+    if (result != -3)
+        return -19;
+
+    /*
+     * A bound driver must not be unregisterable.
+     */
+    result = driver_unregister(&lifecycle_success_driver);
+
+    if (result != -3)
+        return -20;
+
+    result = device_unbind(&lifecycle_success_device);
+
+    if (result != 0)
+        return -21;
+
+    if (lifecycle_success_remove_count != 1)
+        return -22;
+
+    if (lifecycle_success_device.state != DEVICE_UNBOUND)
+        return -23;
+
+    if (lifecycle_success_device.driver != (void *)0)
+        return -24;
+
+    /*
+     * Framework cleanup must happen after remove().
+     */
+    if (lifecycle_success_device.driver_data != (void *)0)
+        return -25;
+
+    /*
+     * ------------------------------------------------------------
+     * Phase 3: rebind after unbind
+     * ------------------------------------------------------------
+     */
+
+    result = device_bind(
+        &lifecycle_success_device,
+        &lifecycle_success_driver);
+
+    if (result != 0)
+        return -26;
+
+    if (lifecycle_success_device.state != DEVICE_BOUND)
+        return -27;
+
+    if (lifecycle_success_device.driver !=
+        &lifecycle_success_driver)
+        return -28;
+
+    if (lifecycle_success_device.driver_data !=
+        &lifecycle_success_state)
+        return -29;
+
+    if (lifecycle_success_probe_count != 2)
+        return -30;
+
+    result = device_unbind(&lifecycle_success_device);
+
+    if (result != 0)
+        return -31;
+
+    if (lifecycle_success_remove_count != 2)
+        return -32;
+
+    if (lifecycle_success_device.state != DEVICE_UNBOUND)
+        return -33;
+
+    if (lifecycle_success_device.driver != (void *)0)
+        return -34;
+
+    if (lifecycle_success_device.driver_data != (void *)0)
+        return -35;
+
+    /*
+     * ------------------------------------------------------------
+     * Final cleanup
+     * ------------------------------------------------------------
+     */
+
+    result = driver_unregister(&lifecycle_success_driver);
+
+    if (result != 0)
+        return -36;
+
+    result = device_unregister(&lifecycle_success_device);
+
+    if (result != 0)
+        return -37;
+
+    if (lifecycle_success_device.state != DEVICE_UNREGISTERED)
+        return -38;
+
+    return 0;
+}
