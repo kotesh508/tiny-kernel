@@ -11,6 +11,7 @@ extern void uart_puts(const char *s);
 
 struct pl011_state {
     uintptr_t base;
+    uint32_t irq;
 };
 
 static struct pl011_state pl011_state;
@@ -18,6 +19,7 @@ static struct pl011_state pl011_state;
 static int pl011_probe(struct device *dev)
 {
     struct resource *mem;
+    struct resource *irq;
     volatile uint32_t *fr;
     uint32_t fr_value;
 
@@ -32,26 +34,42 @@ static int pl011_probe(struct device *dev)
     if (mem == (void *)0)
         return -2;
 
-    if (mem->start > mem->end)
+    irq = device_get_resource(
+        dev,
+        RESOURCE_IRQ,
+        0);
+
+    if (irq == (void *)0)
         return -3;
 
-    if ((mem->start & 0x3UL) != 0)
+    if (mem->start > mem->end)
         return -4;
 
-    if ((mem->end - mem->start + 1) < 0x100UL)
+    if ((mem->start & 0x3UL) != 0)
         return -5;
 
+    if ((mem->end - mem->start + 1) < 0x100UL)
+        return -6;
+
+    if (irq->start != irq->end)
+        return -7;
+
+    if (irq->start > 0xffffffffUL)
+        return -8;
+
     pl011_state.base = mem->start;
+    pl011_state.irq = (uint32_t)irq->start;
 
     /*
-     * The driver gets its MMIO base exclusively
-     * from the device resource.
+     * Driver receives the MMIO base from the device
+     * resource. No board-specific UART address exists
+     * in this driver.
      */
     uart_init(pl011_state.base);
 
     /*
-     * Read the PL011 Flag Register through the
-     * resource-derived MMIO address.
+     * Access PL011 Flag Register through the
+     * resource-derived MMIO base.
      */
     fr = (volatile uint32_t *)
          (pl011_state.base + PL011_FR);
@@ -61,6 +79,8 @@ static int pl011_probe(struct device *dev)
 
     dev->driver_data = &pl011_state;
 
+    uart_puts("PL011 MEM RESOURCE PASS\r\n");
+    uart_puts("PL011 IRQ RESOURCE PASS\r\n");
     uart_puts("PL011 PROBE PASS\r\n");
     uart_puts("PL011 MMIO PASS\r\n");
 
@@ -73,6 +93,8 @@ static int pl011_remove(struct device *dev)
         return -1;
 
     dev->driver_data = (void *)0;
+    pl011_state.base = 0;
+    pl011_state.irq = 0;
 
     return 0;
 }

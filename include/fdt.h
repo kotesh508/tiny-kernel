@@ -26,6 +26,11 @@ struct fdt_reg {
     uintptr_t size2;
 };
 
+struct fdt_irq {
+    uint32_t irq;
+    uint32_t flags;
+};
+
 int fdt_read_header(uintptr_t dtb,
                     struct fdt_header_info *info);
 
@@ -52,5 +57,11 @@ int fdt_find_timer_virtual_irq(
     uintptr_t dtb,
     const struct fdt_header_info *info,
     uint32_t *irq);
+
+int fdt_find_compatible_irq(
+    uintptr_t dtb,
+    const struct fdt_header_info *info,
+    const char *compatible,
+    struct fdt_irq *irq);
 
 #endif

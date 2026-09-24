@@ -76,6 +76,12 @@ int device_discover_from_fdt_reg(
     const char *name,
     const char *compatible);
 
+int device_discover_from_fdt(
+    uintptr_t dtb,
+    const struct fdt_header_info *info,
+    const char *name,
+    const char *compatible);
+
 struct device *device_find_compatible(const char *compatible);
 
 int device_model_test(void);

@@ -364,6 +364,71 @@ int device_discover_from_fdt_reg(
     return device_register(&dtb_pl011_device);
 }
 
+
+int device_discover_from_fdt(
+    uintptr_t dtb,
+    const struct fdt_header_info *info,
+    const char *name,
+    const char *compatible)
+{
+    struct fdt_reg reg;
+    struct fdt_irq irq;
+    int result;
+
+    if (dtb == 0 ||
+        info == (void *)0 ||
+        name == (void *)0 ||
+        compatible == (void *)0)
+        return -1;
+
+    result = fdt_find_compatible_reg(
+        dtb,
+        info,
+        compatible,
+        &reg);
+
+    if (result != 0)
+        return -2;
+
+    result = fdt_find_compatible_irq(
+        dtb,
+        info,
+        compatible,
+        &irq);
+
+    if (result != 0)
+        return -3;
+
+    dtb_pl011_device.name = name;
+    dtb_pl011_device.compatible = compatible;
+    dtb_pl011_device.resource_count = 0;
+    dtb_pl011_device.driver_data = (void *)0;
+    dtb_pl011_device.driver = (void *)0;
+    dtb_pl011_device.state = DEVICE_UNREGISTERED;
+
+    result = device_add_resource(
+        &dtb_pl011_device,
+        RESOURCE_MEM,
+        reg.base,
+        reg.base + reg.size - 1,
+        0);
+
+    if (result != 0)
+        return -4;
+
+    result = device_add_resource(
+        &dtb_pl011_device,
+        RESOURCE_IRQ,
+        (uintptr_t)irq.irq,
+        (uintptr_t)irq.irq,
+        irq.flags);
+
+    if (result != 0)
+        return -5;
+
+    return device_register(&dtb_pl011_device);
+}
+
 static volatile uint32_t demo_probe_count;
 static volatile uint32_t demo_remove_count;
 

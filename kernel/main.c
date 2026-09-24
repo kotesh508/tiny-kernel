@@ -159,9 +159,31 @@ void kernel_main(uintptr_t dtb)
     {
         struct device *pl011_dev;
         struct resource *mem;
+        struct resource *irq;
+        struct fdt_irq dtb_irq;
         int device_result;
+        int irq_result;
 
-        device_result = device_discover_from_fdt_reg(
+        irq_result = fdt_find_compatible_irq(
+            dtb,
+            &fdt_info,
+            "arm,pl011",
+            &dtb_irq);
+
+        if (irq_result != 0) {
+            uart_puts("DTB IRQ DISCOVERY FAIL\r\n");
+            uart_puthex((uintptr_t)(-irq_result));
+            uart_puts("\r\n");
+
+            for (;;)
+                asm volatile("wfe");
+        }
+
+        uart_puts("DTB UART IRQ = 0x");
+        uart_puthex((uintptr_t)dtb_irq.irq);
+        uart_puts("\r\n");
+
+        device_result = device_discover_from_fdt(
             dtb,
             &fdt_info,
             "pl011",
@@ -176,7 +198,8 @@ void kernel_main(uintptr_t dtb)
                 asm volatile("wfe");
         }
 
-        pl011_dev = device_find_compatible("arm,pl011");
+        pl011_dev = device_find_compatible(
+            "arm,pl011");
 
         if (pl011_dev == (void *)0 ||
             pl011_dev->state != DEVICE_REGISTERED) {
@@ -192,12 +215,35 @@ void kernel_main(uintptr_t dtb)
             RESOURCE_MEM,
             0);
 
+        irq = device_get_resource(
+            pl011_dev,
+            RESOURCE_IRQ,
+            0);
+
         if (mem == (void *)0 ||
-            mem->start != uart_reg.base ||
+            irq == (void *)0) {
+
+            uart_puts("DTB RESOURCE LOOKUP FAIL\r\n");
+
+            for (;;)
+                asm volatile("wfe");
+        }
+
+        if (mem->start != uart_reg.base ||
             mem->end !=
                 uart_reg.base + uart_reg.size - 1) {
 
             uart_puts("DTB MEM RESOURCE FAIL\r\n");
+
+            for (;;)
+                asm volatile("wfe");
+        }
+
+        if (irq->start != dtb_irq.irq ||
+            irq->end != dtb_irq.irq ||
+            irq->flags != dtb_irq.flags) {
+
+            uart_puts("DTB IRQ RESOURCE FAIL\r\n");
 
             for (;;)
                 asm volatile("wfe");
@@ -213,7 +259,12 @@ void kernel_main(uintptr_t dtb)
         uart_puthex(mem->end);
         uart_puts("\r\n");
 
+        uart_puts("IRQ RESOURCE = 0x");
+        uart_puthex(irq->start);
+        uart_puts("\r\n");
+
         uart_puts("DTB MEM RESOURCE PASS\r\n");
+        uart_puts("DTB IRQ RESOURCE PASS\r\n");
     }
 
     uart_puts("RESOURCE MODEL TEST\r\n");
@@ -232,19 +283,6 @@ void kernel_main(uintptr_t dtb)
                 asm volatile("wfe");
         }
 
-        if (device_add_resource(
-                dev,
-                RESOURCE_IRQ,
-                33,
-                33,
-                0) != 0) {
-
-            uart_puts("IRQ RESOURCE ADD FAIL\r\n");
-
-            for (;;)
-                asm volatile("wfe");
-        }
-
         mem = device_get_resource(
             dev,
             RESOURCE_MEM,
@@ -256,9 +294,7 @@ void kernel_main(uintptr_t dtb)
             0);
 
         if (mem == (void *)0 ||
-            irq == (void *)0 ||
-            irq->start != 33 ||
-            irq->end != 33) {
+            irq == (void *)0) {
 
             uart_puts("RESOURCE MODEL FAIL\r\n");
 
@@ -275,36 +311,14 @@ void kernel_main(uintptr_t dtb)
 
     {
         struct device *pl011_dev;
-        struct resource *mem;
         int result;
         int bound;
 
-        pl011_dev = device_find_compatible("arm,pl011");
+        pl011_dev = device_find_compatible(
+            "arm,pl011");
 
         if (pl011_dev == (void *)0) {
             uart_puts("PL011 DEVICE LOOKUP FAIL\r\n");
-
-            for (;;)
-                asm volatile("wfe");
-        }
-
-        mem = device_get_resource(
-            pl011_dev,
-            RESOURCE_MEM,
-            0);
-
-        if (mem == (void *)0) {
-            uart_puts("PL011 RESOURCE LOOKUP FAIL\r\n");
-
-            for (;;)
-                asm volatile("wfe");
-        }
-
-        if (mem->start != uart_reg.base ||
-            mem->end !=
-                uart_reg.base + uart_reg.size - 1) {
-
-            uart_puts("PL011 RESOURCE VERIFY FAIL\r\n");
 
             for (;;)
                 asm volatile("wfe");

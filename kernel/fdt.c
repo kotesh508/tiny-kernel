@@ -806,3 +806,205 @@ int fdt_find_timer_virtual_irq(
 
     return -11;
 }
+
+/*
+ * Find the first interrupt of a DT node selected by compatible.
+ *
+ * This implementation intentionally supports the GICv2 binding used
+ * by the QEMU virt,gic-version=2 laboratory target:
+ *
+ *   interrupts = <type hwirq flags>
+ *
+ * type 0 = SPI  -> Linux-style INTID = hwirq + 32
+ * type 1 = PPI  -> Linux-style INTID = hwirq + 16
+ *
+ * This is deliberately not a generic interrupt-domain resolver.
+ */
+int fdt_find_compatible_irq(
+    uintptr_t dtb,
+    const struct fdt_header_info *info,
+    const char *compatible,
+    struct fdt_irq *irq)
+{
+    uintptr_t p;
+    uintptr_t struct_start;
+    uintptr_t struct_end;
+    uintptr_t strings_start;
+    uintptr_t strings_end;
+
+    uint32_t token;
+    uint32_t len;
+    uint32_t nameoff;
+    uint32_t depth = 0;
+
+    uint8_t compat_found[FDT_MAX_DEPTH];
+    uint8_t irq_found[FDT_MAX_DEPTH];
+    struct fdt_irq irq_values[FDT_MAX_DEPTH];
+
+    if (dtb == 0 ||
+        info == (void *)0 ||
+        compatible == (void *)0 ||
+        irq == (void *)0)
+        return -1;
+
+    irq->irq = 0;
+    irq->flags = 0;
+
+    struct_start = dtb + info->off_dt_struct;
+    struct_end = struct_start + info->size_dt_struct;
+
+    strings_start = dtb + info->off_dt_strings;
+    strings_end = strings_start + info->size_dt_strings;
+
+    p = struct_start;
+
+    while (p + 4 <= struct_end) {
+        token = fdt_be32(p);
+        p += 4;
+
+        if (token == FDT_BEGIN_NODE) {
+            if (depth >= FDT_MAX_DEPTH)
+                return -2;
+
+            while (p < struct_end &&
+                   *(const uint8_t *)p != '\0')
+                p++;
+
+            if (p >= struct_end)
+                return -3;
+
+            compat_found[depth] = 0;
+            irq_found[depth] = 0;
+
+            irq_values[depth].irq = 0;
+            irq_values[depth].flags = 0;
+
+            depth++;
+
+            p++;
+            p = fdt_align4(p);
+
+            if (p > struct_end)
+                return -4;
+
+            continue;
+        }
+
+        if (token == FDT_END_NODE) {
+            if (depth == 0)
+                return -5;
+
+            depth--;
+
+            if (compat_found[depth] &&
+                irq_found[depth]) {
+
+                irq->irq = irq_values[depth].irq;
+                irq->flags = irq_values[depth].flags;
+
+                return 0;
+            }
+
+            continue;
+        }
+
+        if (token == FDT_PROP) {
+            uintptr_t value;
+            const char *property_name;
+
+            if (depth == 0)
+                return -6;
+
+            if (p + 8 > struct_end)
+                return -7;
+
+            len = fdt_be32(p);
+            nameoff = fdt_be32(p + 4);
+            p += 8;
+
+            if (nameoff >= info->size_dt_strings)
+                return -8;
+
+            property_name =
+                (const char *)(strings_start + nameoff);
+
+            if (!fdt_string_valid(
+                    (uintptr_t)property_name,
+                    strings_end))
+                return -9;
+
+            if (len > (uint32_t)(struct_end - p))
+                return -10;
+
+            value = p;
+
+            if (fdt_name_equal(
+                    property_name,
+                    "compatible")) {
+
+                if (fdt_compatible_contains(
+                        value,
+                        len,
+                        compatible))
+                    compat_found[depth - 1] = 1;
+            }
+
+            if (fdt_name_equal(
+                    property_name,
+                    "interrupts")) {
+
+                uint32_t type;
+                uint32_t hwirq;
+                uint32_t flags;
+
+                /*
+                 * GICv2 interrupt specifier:
+                 *
+                 *   cell 0 = type
+                 *   cell 1 = interrupt number
+                 *   cell 2 = trigger/level flags
+                 */
+                if (len != 12)
+                    return -11;
+
+                type = fdt_be32(value);
+                hwirq = fdt_be32(value + 4);
+                flags = fdt_be32(value + 8);
+
+                if (type == 0) {
+                    /* SPI */
+                    if (hwirq >= 988)
+                        return -12;
+
+                    irq_values[depth - 1].irq =
+                        hwirq + 32;
+                } else if (type == 1) {
+                    /* PPI */
+                    if (hwirq >= 16)
+                        return -13;
+
+                    irq_values[depth - 1].irq =
+                        hwirq + 16;
+                } else {
+                    return -14;
+                }
+
+                irq_values[depth - 1].flags = flags;
+                irq_found[depth - 1] = 1;
+            }
+
+            p = fdt_align4(p + len);
+            continue;
+        }
+
+        if (token == FDT_NOP)
+            continue;
+
+        if (token == FDT_END)
+            break;
+
+        return -15;
+    }
+
+    return -16;
+}
