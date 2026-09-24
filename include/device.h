@@ -84,7 +84,22 @@ int device_discover_from_fdt(
 
 struct device *device_find_compatible(const char *compatible);
 
+struct fdt_device_desc {
+    const char *name;
+    const char *compatible;
+};
+
+int device_discover_from_fdt_list(
+    uintptr_t dtb,
+    const struct fdt_header_info *info,
+    const struct fdt_device_desc *desc,
+    uint32_t count);
+
 int device_model_test(void);
 int device_lifecycle_test(void);
+int device_multi_test(
+    uintptr_t dtb,
+    const struct fdt_header_info *info);
+
 
 #endif

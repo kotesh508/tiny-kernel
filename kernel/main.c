@@ -388,6 +388,31 @@ void kernel_main(uintptr_t dtb)
         uart_puts("PL011 DRIVER TEST PASS\r\n");
     }
 
+    uart_puts("MULTI DEVICE TEST\r\n");
+
+    {
+        int result;
+
+        result = device_multi_test(
+            dtb,
+            &fdt_info);
+
+        if (result != 0) {
+            uart_puts("MULTI DEVICE FAIL\r\n");
+            uart_puthex((uintptr_t)(-result));
+            uart_puts("\r\n");
+
+            for (;;)
+                asm volatile("wfe");
+        }
+
+        uart_puts("PL011 EXISTING BIND PASS\r\n");
+        uart_puts("PL031 AUTO BIND PASS\r\n");
+        uart_puts("PL061 AUTO BIND PASS\r\n");
+        uart_puts("MULTI DEVICE DISCOVERY PASS\r\n");
+        uart_puts("MULTI DEVICE BIND PASS\r\n");
+    }
+
     uart_puts("TIMER TEST\r\n");
 
     if (fdt_find_compatible_reg(

@@ -300,6 +300,21 @@ int device_bind_all(void)
 
 static struct device dtb_pl011_device;
 
+static struct device dtb_device_pool[DEVICE_MAX];
+
+static struct device *dtb_get_free_device(void)
+{
+    uint32_t i;
+
+    for (i = 0; i < DEVICE_MAX; i++) {
+        if (dtb_device_pool[i].state == DEVICE_UNREGISTERED)
+            return &dtb_device_pool[i];
+    }
+
+    return (void *)0;
+}
+
+
 struct device *device_find_compatible(const char *compatible)
 {
     uint32_t i;
@@ -373,6 +388,7 @@ int device_discover_from_fdt(
 {
     struct fdt_reg reg;
     struct fdt_irq irq;
+    struct device *dev;
     int result;
 
     if (dtb == 0 ||
@@ -381,6 +397,11 @@ int device_discover_from_fdt(
         compatible == (void *)0)
         return -1;
 
+    dev = dtb_get_free_device();
+
+    if (dev == (void *)0)
+        return -2;
+
     result = fdt_find_compatible_reg(
         dtb,
         info,
@@ -388,7 +409,7 @@ int device_discover_from_fdt(
         &reg);
 
     if (result != 0)
-        return -2;
+        return -3;
 
     result = fdt_find_compatible_irq(
         dtb,
@@ -397,36 +418,72 @@ int device_discover_from_fdt(
         &irq);
 
     if (result != 0)
-        return -3;
+        return -4;
 
-    dtb_pl011_device.name = name;
-    dtb_pl011_device.compatible = compatible;
-    dtb_pl011_device.resource_count = 0;
-    dtb_pl011_device.driver_data = (void *)0;
-    dtb_pl011_device.driver = (void *)0;
-    dtb_pl011_device.state = DEVICE_UNREGISTERED;
+    dev->name = name;
+    dev->compatible = compatible;
+    dev->resource_count = 0;
+    dev->driver_data = (void *)0;
+    dev->driver = (void *)0;
+    dev->state = DEVICE_UNREGISTERED;
 
     result = device_add_resource(
-        &dtb_pl011_device,
+        dev,
         RESOURCE_MEM,
         reg.base,
         reg.base + reg.size - 1,
         0);
 
     if (result != 0)
-        return -4;
+        return -5;
 
     result = device_add_resource(
-        &dtb_pl011_device,
+        dev,
         RESOURCE_IRQ,
         (uintptr_t)irq.irq,
         (uintptr_t)irq.irq,
         irq.flags);
 
     if (result != 0)
-        return -5;
+        return -6;
 
-    return device_register(&dtb_pl011_device);
+    return device_register(dev);
+}
+
+int device_discover_from_fdt_list(
+    uintptr_t dtb,
+    const struct fdt_header_info *info,
+    const struct fdt_device_desc *desc,
+    uint32_t count)
+{
+    uint32_t i;
+    int result;
+
+    if (dtb == 0 ||
+        info == (void *)0 ||
+        desc == (void *)0 ||
+        count == 0)
+        return -1;
+
+    if (count > DEVICE_MAX)
+        return -2;
+
+    for (i = 0; i < count; i++) {
+        if (desc[i].name == (void *)0 ||
+            desc[i].compatible == (void *)0)
+            return -3;
+
+        result = device_discover_from_fdt(
+            dtb,
+            info,
+            desc[i].name,
+            desc[i].compatible);
+
+        if (result != 0)
+            return -4;
+    }
+
+    return 0;
 }
 
 static volatile uint32_t demo_probe_count;
@@ -899,6 +956,190 @@ int device_lifecycle_test(void)
 
     if (lifecycle_success_device.state != DEVICE_UNREGISTERED)
         return -38;
+
+    return 0;
+}
+
+static int multi_pl031_probe(struct device *dev)
+{
+    struct resource *mem;
+    struct resource *irq;
+
+    if (dev == (void *)0)
+        return -1;
+
+    mem = device_get_resource(dev, RESOURCE_MEM, 0);
+    irq = device_get_resource(dev, RESOURCE_IRQ, 0);
+
+    if (mem == (void *)0 || irq == (void *)0)
+        return -2;
+
+    dev->driver_data = dev;
+
+    return 0;
+}
+
+static int multi_pl031_remove(struct device *dev)
+{
+    if (dev == (void *)0)
+        return -1;
+
+    dev->driver_data = (void *)0;
+
+    return 0;
+}
+
+static int multi_pl061_probe(struct device *dev)
+{
+    struct resource *mem;
+    struct resource *irq;
+
+    if (dev == (void *)0)
+        return -1;
+
+    mem = device_get_resource(dev, RESOURCE_MEM, 0);
+    irq = device_get_resource(dev, RESOURCE_IRQ, 0);
+
+    if (mem == (void *)0 || irq == (void *)0)
+        return -2;
+
+    dev->driver_data = dev;
+
+    return 0;
+}
+
+static int multi_pl061_remove(struct device *dev)
+{
+    if (dev == (void *)0)
+        return -1;
+
+    dev->driver_data = (void *)0;
+
+    return 0;
+}
+
+static struct driver multi_pl031_driver = {
+    .name = "multi-pl031-driver",
+    .compatible = "arm,pl031",
+    .probe = multi_pl031_probe,
+    .remove = multi_pl031_remove,
+    .registered = 0
+};
+
+static struct driver multi_pl061_driver = {
+    .name = "multi-pl061-driver",
+    .compatible = "arm,pl061",
+    .probe = multi_pl061_probe,
+    .remove = multi_pl061_remove,
+    .registered = 0
+};
+
+int device_multi_test(uintptr_t dtb,
+                      const struct fdt_header_info *info)
+{
+    static const struct fdt_device_desc desc[] = {
+        {
+            .name = "pl031",
+            .compatible = "arm,pl031"
+        },
+        {
+            .name = "pl061",
+            .compatible = "arm,pl061"
+        }
+    };
+
+    struct device *pl011;
+    struct device *pl031;
+    struct device *pl061;
+    int result;
+    int bound;
+
+    pl011 = device_find_compatible("arm,pl011");
+
+    if (pl011 == (void *)0 ||
+        pl011->state != DEVICE_BOUND)
+        return -1;
+
+    result = device_discover_from_fdt_list(
+        dtb,
+        info,
+        desc,
+        2);
+
+    if (result != 0)
+        return -2;
+
+    pl031 = device_find_compatible("arm,pl031");
+    pl061 = device_find_compatible("arm,pl061");
+
+    if (pl031 == (void *)0 || pl061 == (void *)0)
+        return -3;
+
+    result = driver_register(&multi_pl031_driver);
+
+    if (result != 0)
+        return -4;
+
+    result = driver_register(&multi_pl061_driver);
+
+    if (result != 0)
+        return -5;
+
+    bound = device_bind_all();
+
+    if (bound != 2)
+        return -6;
+
+    if (pl011->state != DEVICE_BOUND)
+        return -7;
+
+    if (pl031->state != DEVICE_BOUND)
+        return -8;
+
+    if (pl061->state != DEVICE_BOUND)
+        return -9;
+
+    if (pl031->driver != &multi_pl031_driver)
+        return -10;
+
+    if (pl061->driver != &multi_pl061_driver)
+        return -11;
+
+    if (pl031->driver_data == (void *)0)
+        return -12;
+
+    if (pl061->driver_data == (void *)0)
+        return -13;
+
+    result = device_unbind(pl031);
+
+    if (result != 0)
+        return -14;
+
+    result = device_unbind(pl061);
+
+    if (result != 0)
+        return -15;
+
+    result = driver_unregister(&multi_pl031_driver);
+
+    if (result != 0)
+        return -16;
+
+    result = driver_unregister(&multi_pl061_driver);
+
+    if (result != 0)
+        return -17;
+
+    result = device_unregister(pl031);
+
+    if (result != 0)
+        return -18;
+
+    result = device_unregister(pl061);
+
+    if (result != 0)
+        return -19;
 
     return 0;
 }
